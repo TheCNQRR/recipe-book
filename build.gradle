@@ -29,6 +29,12 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-restclient'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation("jakarta.validation:jakarta.validation-api:4.0.0-M1")
+    implementation("software.amazon.awssdk:s3:2.42.30")
+    implementation("org.mapstruct:mapstruct:1.6.3")
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
