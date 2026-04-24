@@ -110,7 +110,7 @@ class DishServiceTest {
         }
 
         @Test
-        @DisplayName("Один ингредиент ровно 100 г → значения продукта переносятся без изменений")
+        @DisplayName("Один ингредиент ровно 100 г - значения продукта переносятся без изменений")
         void shouldCopyProductValuesForExactly100g() {
             Product p = product(200.0, 10.0, 5.0, 30.0);
             when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
