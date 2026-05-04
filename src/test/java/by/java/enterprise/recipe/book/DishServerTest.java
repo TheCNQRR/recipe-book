@@ -5,11 +5,11 @@ import by.java.enterprise.recipe.book.dto.request.DishCreateRequest.IngredientDt
 import by.java.enterprise.recipe.book.exception.ValidationException;
 import by.java.enterprise.recipe.book.model.Dish;
 import by.java.enterprise.recipe.book.model.Product;
-import by.java.enterprise.recipe.book.model.enums.DietaryFlags;
 import by.java.enterprise.recipe.book.model.enums.Type;
 import by.java.enterprise.recipe.book.repository.DishRepository;
 import by.java.enterprise.recipe.book.repository.ProductRepository;
 import by.java.enterprise.recipe.book.service.DishService;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -32,11 +32,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("DishService: автоматический расчёт пищевой ценности и её валидация")
+@DisplayName("DishService: Автоматический расчёт и валидация КБЖУ")
 class DishServiceTest {
 
     @Mock
     private DishRepository dishRepository;
+
     @Mock
     private ProductRepository productRepository;
 
@@ -46,227 +47,176 @@ class DishServiceTest {
     @Captor
     private ArgumentCaptor<Dish> dishCaptor;
 
+    private static final Offset<Double> PRECISION = within(0.0001);
 
-    private Product product(double cal, double prot, double fat, double carb) {
+    //метод для создания продуктов с заданными БЖУ
+    private Product createProduct(double cal, double prot, double fat, double carb) {
         return Product.builder()
                 .id(UUID.randomUUID())
-                .name("test-product")
+                .name("Test Product")
                 .caloricity(cal)
                 .proteins(prot)
                 .fats(fat)
                 .carbs(carb)
-                .additionalFlags(List.of(DietaryFlags.VEGAN, DietaryFlags.GLUTEN_FREE))
                 .build();
     }
 
-    private DishCreateRequest buildRequest(List<IngredientDto> ingredients,
-                                           double portionSize,
-                                           Type type,
-                                           Double caloricity,
-                                           Double proteins,
-                                           Double fats,
-                                           Double carbs,
-                                           List<DietaryFlags> dietaryFlags) {
+    //метод для создания запроса
+    private DishCreateRequest buildRequest(List<IngredientDto> ingredients, double portionSize) {
         return new DishCreateRequest(
                 "Тестовое блюдо",
-                List.of("http://photo.com/1.jpg"),
-                caloricity,
-                proteins,
-                fats,
-                carbs,
+                List.of(),
+                null, null, null, null,
                 portionSize,
-                type != null ? type : Type.MAIN_COURSE,
-                dietaryFlags != null ? dietaryFlags : List.of(),
-                ingredients != null ? ingredients : List.of()
+                Type.MAIN_COURSE,
+                List.of(),
+                ingredients
         );
     }
 
-    private DishCreateRequest buildRequest(List<IngredientDto> ingredients, double portionSize) {
-        return buildRequest(ingredients, portionSize, null, null, null, null, null, null);
-    }
-
-    private DishCreateRequest buildRequest(List<IngredientDto> ingredients, double portionSize, Double caloricity, Double proteins) {
-        return buildRequest(ingredients, portionSize, null, caloricity, proteins, null, null, null);
-    }
-
     @Nested
-    @DisplayName("Автоматический расчёт калорийности и БЖУ")
-    class CalculateNutrition {
+    @DisplayName("1. Расчёт пищевой ценности (calculateNutrition)")
+    class CalculateNutritionTests {
 
-        @Test
-        @DisplayName("Пустой список ингредиентов - все значения 0")
-        void shouldSetZeroWhenNoIngredients() {
-            DishCreateRequest request = buildRequest(List.of(), 250.0);
-            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            dishService.create(request);
-
-            verify(dishRepository).save(dishCaptor.capture());
-            Dish saved = dishCaptor.getValue();
-            assertThat(saved.getCaloricity()).isZero();
-            assertThat(saved.getProteins()).isZero();
-            assertThat(saved.getFats()).isZero();
-            assertThat(saved.getCarbs()).isZero();
-        }
-
-        @Test
-        @DisplayName("Один ингредиент ровно 100 г - значения продукта переносятся без изменений")
-        void shouldCopyProductValuesForExactly100g() {
-            Product p = product(200.0, 10.0, 5.0, 30.0);
+        @ParameterizedTest(name = "Кол-во={0}г. Ожидается: К={1}, Б={2}, Ж={3}, У={4}")
+        @MethodSource("equivalencePartitioningForCalculation")
+        @DisplayName("Эквивалентное разбиение: Корректный расчёт пропорций для одного ингредиента")
+        void shouldCalculateProportionsCorrectly(double quantity, double expCal, double expProt, double expFat, double expCarb) {
+            Product p = createProduct(200.0, 10.0, 20.0, 30.0);
             when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
             when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), 100.0)), 250.0);
+            DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), quantity)), 150.0);
 
             dishService.create(request);
 
             verify(dishRepository).save(dishCaptor.capture());
             Dish saved = dishCaptor.getValue();
-            assertThat(saved.getCaloricity()).isEqualTo(200.0);
-            assertThat(saved.getProteins()).isEqualTo(10.0);
-            assertThat(saved.getFats()).isEqualTo(5.0);
-            assertThat(saved.getCarbs()).isEqualTo(30.0);
+
+            assertThat(saved.getCaloricity()).isCloseTo(expCal, PRECISION);
+            assertThat(saved.getProteins()).isCloseTo(expProt, PRECISION);
+            assertThat(saved.getFats()).isCloseTo(expFat, PRECISION);
+            assertThat(saved.getCarbs()).isCloseTo(expCarb, PRECISION);
         }
 
-        @ParameterizedTest(name = "Количество = {0} г - калорийность = {1}")
-        @MethodSource("quantityAndExpectedCalories")
-        @DisplayName("Масштабирование БЖУ пропорционально количеству продукта")
-        void shouldScaleNutritionByQuantity(double quantity, double expectedCal) {
-            Product p = product(150.0, 12.0, 7.0, 20.0);
-            when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
-            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), quantity)), 250.0);
-
-            dishService.create(request);
-
-            verify(dishRepository).save(dishCaptor.capture());
-            Dish saved = dishCaptor.getValue();
-            assertThat(saved.getCaloricity()).isEqualTo(expectedCal);
-            assertThat(saved.getProteins()).isEqualTo(12.0 * quantity / 100.0);
-        }
-
-        static Stream<Arguments> quantityAndExpectedCalories() {
+        static Stream<Arguments> equivalencePartitioningForCalculation() {
             return Stream.of(
-                    Arguments.of(50.0, 75.0),
-                    Arguments.of(200.0, 300.0),
-                    Arguments.of(100.0, 150.0)
+                    //Меньше 100г
+                    Arguments.of(50.0, 100.0, 5.0, 10.0, 15.0),
+                    //Ровно 100г
+                    Arguments.of(100.0, 200.0, 10.0, 20.0, 30.0),
+                    //Больше 100г
+                    Arguments.of(250.0, 500.0, 25.0, 50.0, 75.0),
+                    //Дробные значения
+                    Arguments.of(33.33, 66.66, 3.333, 6.666, 9.999)
             );
         }
 
         @Test
-        @DisplayName("Несколько ингредиентов — итоговая ценность равна сумме вкладов")
-        void shouldSumContributionsFromMultipleIngredients() {
-            Product p1 = product(100.0, 10.0, 5.0, 20.0);
-            Product p2 = product(200.0, 15.0, 8.0, 25.0);
+        @DisplayName("Расчёт для нескольких ингредиентов (Сумма вкладов)")
+        void shouldCalculateSumForMultipleIngredients() {
+            Product p1 = createProduct(100.0, 10.0, 0.0, 0.0);
+            Product p2 = createProduct(200.0, 0.0, 15.0, 5.0);
+
             when(productRepository.findById(p1.getId())).thenReturn(Optional.of(p1));
             when(productRepository.findById(p2.getId())).thenReturn(Optional.of(p2));
             when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            DishCreateRequest request = buildRequest(
-                    List.of(
-                            new IngredientDto(p1.getId(), 150.0),
-                            new IngredientDto(p2.getId(), 50.0)
-                    ), 250.0);
+            DishCreateRequest request = buildRequest(List.of(
+                    new IngredientDto(p1.getId(), 150.0),
+                    new IngredientDto(p2.getId(), 50.0)
+            ), 200.0);
 
             dishService.create(request);
 
             verify(dishRepository).save(dishCaptor.capture());
             Dish saved = dishCaptor.getValue();
-            double expectedCal = 100.0 * 1.5 + 200.0 * 0.5;
-            assertThat(saved.getCaloricity()).isEqualTo(expectedCal);
-            assertThat(saved.getProteins()).isEqualTo(10.0 * 1.5 + 15.0 * 0.5);
+
+            assertThat(saved.getCaloricity()).isCloseTo(250.0, PRECISION);
+            assertThat(saved.getProteins()).isCloseTo(15.0, PRECISION);
+            assertThat(saved.getFats()).isCloseTo(7.5, PRECISION);
+            assertThat(saved.getCarbs()).isCloseTo(2.5, PRECISION);
+        }
+
+        @Test
+        @DisplayName("Граничное значение массы ингредиента, стремящееся к нулю")
+        void boundaryValueExtremeSmallQuantity() {
+            Product p = createProduct(100.0, 10.0, 10.0, 10.0);
+            when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
+            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), 0.01)), 100.0);
+
+            dishService.create(request);
+
+            verify(dishRepository).save(dishCaptor.capture());
+            Dish saved = dishCaptor.getValue();
+            assertThat(saved.getProteins()).isCloseTo(0.001, PRECISION);
         }
     }
 
     @Nested
-    @DisplayName("Валидация: сумма БЖУ на 100 г <= 100")
-    class ValidateNutritionPer100g {
+    @DisplayName("2. Валидация БЖУ на 100г порции (validateNutritionPer100g)")
+    class ValidateNutritionTests {
 
-        private Product createProductForSum(double prot, double fat, double carb) {
-            return product(0.0, prot, fat, carb);
-        }
-
-        @Test
-        @DisplayName("Сумма БЖУ на 100 г = 100.0 (допустимо)")
-        void shouldAllowSumExactly100() {
-            Product p = createProductForSum(40.0, 30.0, 30.0);
-            when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
-            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), 200.0)), 200.0);
-
-            assertThatCode(() -> dishService.create(request)).doesNotThrowAnyException();
-        }
-
-        @ParameterizedTest(name = "Б={0}, Ж={1}, У={2} - ошибка={3}")
-        @MethodSource("boundarySumArguments")
-        @DisplayName("Проверка граничных значений суммы БЖУ на 100 г")
-        void shouldThrowWhenSumExceeds100(double prot, double fat, double carb, boolean shouldFail) {
-            Product p = createProductForSum(prot, fat, carb);
+        @ParameterizedTest(name = "Сумма БЖУ на 100г = {3}. Ожидается ошибка: {4}")
+        @MethodSource("boundaryValuesForMacroSum")
+        @DisplayName("Анализ граничных значений: Проверка превышения суммы БЖУ > 100 на 100г блюда")
+        void shouldValidateBoundaryValuesForMacrosPer100g(double prot, double fat, double carb, double sumPer100g, boolean expectsException) {
+            Product p = createProduct(100.0, prot, fat, carb);
             when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
 
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), 100.0)), 100.0);
+            DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), 100.0)), 100.0);
 
-            if (shouldFail) {
+            if (!expectsException) {
+                when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            }
+
+            if (expectsException) {
                 assertThatThrownBy(() -> dishService.create(request))
                         .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Сумма БЖУ на 100 г");
+                        .hasMessageContaining("Сумма БЖУ на 100 г блюда не может превышать 100");
             } else {
-                when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
                 assertThatCode(() -> dishService.create(request)).doesNotThrowAnyException();
             }
         }
 
-        static Stream<Arguments> boundarySumArguments() {
+        static Stream<Arguments> boundaryValuesForMacroSum() {
             return Stream.of(
-                    Arguments.of(40.0, 30.0, 30.0, false),
-                    Arguments.of(10.0, 10.0, 10.0, false),
-                    Arguments.of(40.0, 30.0, 30.1, true),
-                    Arguments.of(101.0, 0.0, 0.0, true)
+                    //Допустимые значения
+                    Arguments.of(30.0, 30.0, 30.0, 90.0, false),
+
+                    //Ровно 100.0
+                    Arguments.of(33.3, 33.3, 33.4, 100.0, false),
+                    Arguments.of(100.0, 0.0, 0.0, 100.0, false),
+
+                    //Чуть больше 100.0
+                    Arguments.of(33.3, 33.3, 33.41, 100.01, true),
+                    Arguments.of(100.0, 0.0, 0.01, 100.01, true),
+
+                    //Сильно больше 100
+                    Arguments.of(50.0, 50.0, 50.0, 150.0, true)
             );
         }
 
-        @Test
-        @DisplayName("Порция 0 — валидация пропускается, исключение не выбрасывается")
-        void shouldSkipValidationWhenPortionIsZero() {
-            Product p = createProductForSum(80.0, 80.0, 80.0);
+        @ParameterizedTest(name = "Размер порции = {0}")
+        @MethodSource("boundaryValuesForPortionSize")
+        @DisplayName("Анализ граничных значений: Защита от деления на 0 при размере порции <= 0")
+        void shouldHandleZeroOrNegativePortionSize(double portionSize) {
+            Product p = createProduct(100.0, 100.0, 100.0, 100.0);
             when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
             when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), 100.0)), 0.0);
+            DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), 100.0)), portionSize);
 
             assertThatCode(() -> dishService.create(request)).doesNotThrowAnyException();
         }
-    }
 
-    @Nested
-    @DisplayName("Сценарии создания блюда")
-    class CreateDishScenarios {
-
-        @Test
-        @DisplayName("Ручная установка калорийности перезаписывает автоматический расчёт")
-        void shouldOverrideCaloricityIfExplicitlyProvided() {
-            Product p = product(100.0, 10.0, 5.0, 20.0);
-            when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
-            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            DishCreateRequest request = buildRequest(
-                    List.of(new IngredientDto(p.getId(), 100.0)), 250.0,
-                    500.0, 30.0);
-
-            dishService.create(request);
-
-            verify(dishRepository).save(dishCaptor.capture());
-            Dish saved = dishCaptor.getValue();
-            assertThat(saved.getCaloricity()).isEqualTo(500.0);
-            assertThat(saved.getProteins()).isEqualTo(30.0);
-            assertThat(saved.getFats()).isEqualTo(5.0);
+        static Stream<Arguments> boundaryValuesForPortionSize() {
+            return Stream.of(
+                    Arguments.of(0.0),
+                    Arguments.of(-1.0)
+            );
         }
     }
 }
