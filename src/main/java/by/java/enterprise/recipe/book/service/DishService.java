@@ -41,6 +41,10 @@ public class DishService {
             throw new ValidationException("Максимум 5 фотографий");
         }
 
+        if (request.ingredients() == null || request.ingredients().isEmpty()) {
+            throw new ValidationException("Блюдо должно содержать хотя бы один ингредиент");
+        }
+
         String name = request.name();
         Type macroType = extractTypeFromMacro(name);
         String cleanedName = removeMacroFromName(name);
@@ -103,6 +107,10 @@ public class DishService {
         Type finalType = request.type() != null ? request.type() : macroType;
         if (finalType == null) {
             throw new ValidationException("Не указана категория блюда");
+        }
+
+        if (request.ingredients() == null || request.ingredients().isEmpty()) {
+            throw new ValidationException("Блюдо должно содержать хотя бы один ингредиент");
         }
 
         dish.setName(cleanedName);

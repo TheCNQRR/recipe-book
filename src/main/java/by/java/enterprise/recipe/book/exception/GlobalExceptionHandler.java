@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 
@@ -57,6 +58,12 @@ public class GlobalExceptionHandler {
                 new ErrorResponse("INTERNAL_ERROR", "Внутренняя ошибка сервера: " + e.getMessage(), Instant.now())
         );
     }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatusException(ResponseStatusException ex) {
+        return ResponseEntity
+                .status(ex.getStatusCode())
+                .body(new ErrorResponse(String.valueOf(ex.getStatusCode().value()), ex.getReason(), Instant.now()));    }
 
     public record ErrorResponse(String code, String message, Instant timestamp) {}
 }

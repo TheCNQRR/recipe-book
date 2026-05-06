@@ -33,11 +33,15 @@ dependencies {
     implementation("software.amazon.awssdk:s3:2.42.30")
     implementation("org.mapstruct:mapstruct:1.6.3")
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation("org.springframework.boot:spring-boot-test-autoconfigure:4.0.5")
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation("org.springframework.boot:spring-boot-test-autoconfigure:4.0.5")
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-jdbc-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-restclient-test'
