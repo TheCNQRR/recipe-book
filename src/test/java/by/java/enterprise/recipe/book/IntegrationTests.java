@@ -256,7 +256,7 @@ public class IntegrationTests {
     }
 
     @Test
-    @DisplayName("Integrity: Запрет удаления продукта, используемого в блюде")
+    @DisplayName("Запрет удаления продукта, используемого в блюде")
     void shouldPreventDeletionOfUsedProduct() {
         //Arrange
         var product = productRepository.save(createProductEntity("Мясо", 20.0, 15.0, 0.0));
