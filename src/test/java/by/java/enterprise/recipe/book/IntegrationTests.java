@@ -73,33 +73,76 @@ public class IntegrationTests {
     class ProductTests {
 
         @Test
-        @DisplayName("проверка CRUD продукта")
-        void fullProductLifecycle() {
-            //Create
-            var createReq = createValidProductRequest("Авокадо",  List.of(),160.0, 2.0, 14.0, 9.0);
-            var createRes = restTemplate.postForEntity("/api/products", createReq, ProductResponse.class);
-            UUID id = createRes.getBody().id();
+        @DisplayName("Создание продукта")
+        void shouldCreateProduct() {
+            //Arrange
+            var createReq = createValidProductRequest("Авокадо", List.of(), 160.0, 2.0, 14.0, 9.0);
 
-            //Get by ID
-            var getRes = restTemplate.getForEntity("/api/products/" + id, ProductResponse.class);
-            assertThat(getRes.getBody().name()).isEqualTo("Авокадо");
+            //Act
+            ResponseEntity<ProductResponse> createRes = restTemplate.postForEntity("/api/products", createReq, ProductResponse.class);
 
-            //Update
-            var updateReq = new ProductUpdateRequest("Спелый Авокадо", List.of(), 170.0, 2.5, 15.0, 10.0, "Тропики",
-                    ProductCategory.VEGETABLES, ReadinessLevel.READY_TO_EAT, List.of(DietaryFlags.VEGAN));
-            restTemplate.put("/api/products/" + id, updateReq);
-
-            var updatedRes = restTemplate.getForEntity("/api/products/" + id, ProductResponse.class);
-            assertThat(updatedRes.getBody().name()).isEqualTo("Спелый Авокадо");
-            assertThat(updatedRes.getBody().additionalFlags()).contains(DietaryFlags.VEGAN);
-
-            //Delete
-            restTemplate.delete("/api/products/" + id);
-            assertThat(restTemplate.getForEntity("/api/products/" + id, Object.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            //Assert
+            assertThat(createRes.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(createRes.getBody()).isNotNull();
+            assertThat(createRes.getBody().id()).isNotNull();
+            assertThat(createRes.getBody().name()).isEqualTo("Авокадо");
         }
 
         @Test
-        @DisplayName("Search: Фильтрация продуктов по подстроке имени")
+        @DisplayName("Получение продукта по ID")
+        void shouldGetProductById() {
+            //Arrange
+            var createReq = createValidProductRequest("Авокадо", List.of(), 160.0, 2.0, 14.0, 9.0);
+            var createRes = restTemplate.postForEntity("/api/products", createReq, ProductResponse.class);
+            UUID id = createRes.getBody().id();
+
+            //Act
+            var getRes = restTemplate.getForEntity("/api/products/" + id, ProductResponse.class);
+
+            //Assert
+            assertThat(getRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(getRes.getBody().name()).isEqualTo("Авокадо");
+        }
+
+        @Test
+        @DisplayName("Обновление продукта")
+        void shouldUpdateProduct() {
+            //Arrange
+            var createReq = createValidProductRequest("Авокадо", List.of(), 160.0, 2.0, 14.0, 9.0);
+            var createRes = restTemplate.postForEntity("/api/products", createReq, ProductResponse.class);
+            UUID id = createRes.getBody().id();
+
+            var updateReq = new ProductUpdateRequest("Спелый Авокадо", List.of(), 170.0, 2.5, 15.0, 10.0, "Тропики",
+                    ProductCategory.VEGETABLES, ReadinessLevel.READY_TO_EAT, List.of(DietaryFlags.VEGAN));
+
+            //Act
+            restTemplate.put("/api/products/" + id, updateReq);
+            var updatedRes = restTemplate.getForEntity("/api/products/" + id, ProductResponse.class);
+
+            //Assert
+            assertThat(updatedRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(updatedRes.getBody().name()).isEqualTo("Спелый Авокадо");
+            assertThat(updatedRes.getBody().additionalFlags()).contains(DietaryFlags.VEGAN);
+        }
+
+        @Test
+        @DisplayName("Удаление продукта")
+        void shouldDeleteProduct() {
+            //Arrange
+            var createReq = createValidProductRequest("Авокадо", List.of(), 160.0, 2.0, 14.0, 9.0);
+            var createRes = restTemplate.postForEntity("/api/products", createReq, ProductResponse.class);
+            UUID id = createRes.getBody().id();
+
+            //Act
+            restTemplate.delete("/api/products/" + id);
+
+            //Assert
+            var getAfterDelete = restTemplate.getForEntity("/api/products/" + id, Object.class);
+            assertThat(getAfterDelete.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("Фильтрация продуктов по подстроке имени")
         void shouldFilterProductsByName() {
             //Arrange
             productRepository.save(createProductEntity("Молоко", 3.0, 3.2, 4.8));
