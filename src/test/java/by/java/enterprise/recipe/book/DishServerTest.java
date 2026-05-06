@@ -159,43 +159,47 @@ class DishServiceTest {
     @DisplayName("2. Валидация БЖУ на 100г порции (validateNutritionPer100g)")
     class ValidateNutritionTests {
 
-        @ParameterizedTest(name = "Сумма БЖУ на 100г = {3}. Ожидается ошибка: {4}")
-        @MethodSource("boundaryValuesForMacroSum")
-        @DisplayName("Анализ граничных значений: Проверка превышения суммы БЖУ > 100 на 100г блюда")
-        void shouldValidateBoundaryValuesForMacrosPer100g(double prot, double fat, double carb, double sumPer100g, boolean expectsException) {
+        @ParameterizedTest(name = "Внутри границ (Сумма = {3}): успешное создание")
+        @MethodSource("validMacroSumValues")
+        @DisplayName("АГЗ: Сумма БЖУ <= 100 на 100г блюда (Допустимые значения)")
+        void shouldAllowValidMacroSumPer100g(double prot, double fat, double carb, double sumPer100g) {
+            Product p = createProduct(100.0, prot, fat, carb);
+            when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
+            when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), 100.0)), 100.0);
+
+            assertThatCode(() -> dishService.create(request)).doesNotThrowAnyException();
+        }
+
+        @ParameterizedTest(name = "За границами (Сумма = {3}): ожидается ValidationException")
+        @MethodSource("invalidMacroSumValues")
+        @DisplayName("АГЗ: Сумма БЖУ > 100 на 100г блюда (Недопустимые значения)")
+        void shouldThrowWhenMacroSumExceeds100g(double prot, double fat, double carb, double sumPer100g) {
             Product p = createProduct(100.0, prot, fat, carb);
             when(productRepository.findById(p.getId())).thenReturn(Optional.of(p));
 
             DishCreateRequest request = buildRequest(List.of(new IngredientDto(p.getId(), 100.0)), 100.0);
 
-            if (!expectsException) {
-                when(dishRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            }
-
-            if (expectsException) {
-                assertThatThrownBy(() -> dishService.create(request))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Сумма БЖУ на 100 г блюда не может превышать 100");
-            } else {
-                assertThatCode(() -> dishService.create(request)).doesNotThrowAnyException();
-            }
+            assertThatThrownBy(() -> dishService.create(request))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Сумма БЖУ на 100 г блюда не может превышать 100");
         }
 
-        static Stream<Arguments> boundaryValuesForMacroSum() {
+
+        static Stream<Arguments> validMacroSumValues() {
             return Stream.of(
-                    //Допустимые значения
-                    Arguments.of(30.0, 30.0, 30.0, 90.0, false),
+                    Arguments.of(30.0, 30.0, 30.0, 90.0),
+                    Arguments.of(33.3, 33.3, 33.4, 100.0),
+                    Arguments.of(100.0, 0.0, 0.0, 100.0)
+            );
+        }
 
-                    //Ровно 100.0
-                    Arguments.of(33.3, 33.3, 33.4, 100.0, false),
-                    Arguments.of(100.0, 0.0, 0.0, 100.0, false),
-
-                    //Чуть больше 100.0
-                    Arguments.of(33.3, 33.3, 33.41, 100.01, true),
-                    Arguments.of(100.0, 0.0, 0.01, 100.01, true),
-
-                    //Сильно больше 100
-                    Arguments.of(50.0, 50.0, 50.0, 150.0, true)
+        static Stream<Arguments> invalidMacroSumValues() {
+            return Stream.of(
+                    Arguments.of(33.3, 33.3, 33.41, 100.01),
+                    Arguments.of(100.0, 0.0, 0.01, 100.01),
+                    Arguments.of(50.0, 50.0, 50.0, 150.0)
             );
         }
 
